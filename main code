@@ -1,0 +1,144 @@
+"""
+Role-Based Access Control (RBAC) demonstration.
+
+Object-oriented version using Enum, dataclasses and unittest.
+All users, roles and permissions are fictional.
+"""
+
+import unittest
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+# ---------------------------------------------------------------
+# 1. DEFINE PERMISSIONS, ROLES AND USERS
+# ---------------------------------------------------------------
+
+class Permission(Enum):
+    VIEW_REPORT = "view_report"
+    EDIT_REPORT = "edit_report"
+    DELETE_REPORT = "delete_report"
+    ADD_USER = "add_user"
+
+
+@dataclass
+class Role:
+    name: str
+    permissions: set = field(default_factory=set)
+
+
+@dataclass
+class User:
+    username: str
+    role: Role
+
+
+class AccessControl:
+    """Stores roles and users, and answers permission questions."""
+
+    def __init__(self):
+        self._roles = {}
+        self._users = {}
+
+    def add_role(self, name, permissions):
+        self._roles[name] = Role(name, set(permissions))
+
+    def add_user(self, username, role_name):
+        if role_name not in self._roles:
+            raise ValueError(f"Role '{role_name}' does not exist")
+        self._users[username] = User(username, self._roles[role_name])
+
+    # -----------------------------------------------------------
+    # 2. PERMISSION CHECK
+    # -----------------------------------------------------------
+
+    def is_allowed(self, username, permission):
+        user = self._users.get(username)
+        if user is None:
+            return False  # deny by default
+        return permission in user.role.permissions
+
+    def describe(self, username, permission):
+        allowed = self.is_allowed(username, permission)
+        user = self._users.get(username)
+        role = user.role.name if user else "unregistered"
+        status = "ALLOWED" if allowed else "BLOCKED"
+        return f"{status:8} | {username:9} | {role:10} | {permission.value}"
+
+
+def build_system():
+    """Create the fictional organisation used in the demo and tests."""
+    acl = AccessControl()
+
+    acl.add_role("director", {
+        Permission.VIEW_REPORT, Permission.EDIT_REPORT,
+        Permission.DELETE_REPORT, Permission.ADD_USER,
+    })
+    acl.add_role("supervisor", {
+        Permission.VIEW_REPORT, Permission.EDIT_REPORT,
+        Permission.DELETE_REPORT,
+    })
+    acl.add_role("clerk", {Permission.VIEW_REPORT, Permission.EDIT_REPORT})
+    acl.add_role("visitor", {Permission.VIEW_REPORT})
+
+    acl.add_user("emeka", "director")
+    acl.add_user("funke", "supervisor")
+    acl.add_user("ibrahim", "clerk")
+    acl.add_user("zainab", "visitor")
+    return acl
+
+
+# ---------------------------------------------------------------
+# 3. TEST THE ACCESS CONTROL SYSTEM
+# ---------------------------------------------------------------
+
+class TestAccessControl(unittest.TestCase):
+    def setUp(self):
+        self.acl = build_system()
+
+    def test_director_has_full_access(self):
+        for perm in Permission:
+            self.assertTrue(self.acl.is_allowed("emeka", perm))
+
+    def test_supervisor_cannot_add_users(self):
+        self.assertTrue(self.acl.is_allowed("funke", Permission.DELETE_REPORT))
+        self.assertFalse(self.acl.is_allowed("funke", Permission.ADD_USER))
+
+    def test_clerk_can_edit_but_not_delete(self):
+        self.assertTrue(self.acl.is_allowed("ibrahim", Permission.EDIT_REPORT))
+        self.assertFalse(self.acl.is_allowed("ibrahim", Permission.DELETE_REPORT))
+
+    def test_visitor_is_read_only(self):
+        self.assertTrue(self.acl.is_allowed("zainab", Permission.VIEW_REPORT))
+        self.assertFalse(self.acl.is_allowed("zainab", Permission.EDIT_REPORT))
+
+    def test_unknown_user_is_denied(self):
+        self.assertFalse(self.acl.is_allowed("stranger", Permission.VIEW_REPORT))
+
+    def test_invalid_role_raises_error(self):
+        with self.assertRaises(ValueError):
+            self.acl.add_user("tobi", "janitor")
+
+
+def run_demo():
+    acl = build_system()
+    cases = [
+        ("emeka", Permission.ADD_USER),
+        ("funke", Permission.DELETE_REPORT),
+        ("funke", Permission.ADD_USER),
+        ("ibrahim", Permission.EDIT_REPORT),
+        ("ibrahim", Permission.DELETE_REPORT),
+        ("zainab", Permission.VIEW_REPORT),
+        ("zainab", Permission.EDIT_REPORT),
+        ("stranger", Permission.VIEW_REPORT),
+    ]
+    print("STATUS   | USER      | ROLE       | PERMISSION")
+    print("-" * 52)
+    for username, perm in cases:
+        print(acl.describe(username, perm))
+
+
+if __name__ == "__main__":
+    run_demo()
+    print("\nRunning unit tests...\n")
+    unittest.main(argv=["rbac"], exit=False, verbosity=2)
